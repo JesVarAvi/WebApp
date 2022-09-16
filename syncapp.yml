@@ -1,0 +1,12 @@
+---
+- hosts: all
+  tasks:
+    name: "sync website"
+    synchronize:
+      src: login_crud/
+      dest: /var/www/{{ domainweb }}
+      archive: no
+      cheksum: yes
+      recursive: yes
+      delete: yes
+  become: no

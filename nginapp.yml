@@ -1,0 +1,105 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: "apt-get update"
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: "Install mysql and php"
+      apt:
+        name: ['mysql-server', 'mysql-client', 'php-fpm', 'php-mysql']
+        state: latest
+
+    - name: "create www directory"
+      file:
+        path: /var/www/{{ domainweb }}
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: "copy nginx site.conf"
+      template:
+        src: app.conf.j2
+        dest: /etc/nginx/sites-enabled/{{ domainweb }}
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart nginx
+
+    - name: "delete default nginx site"
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: restart
+
+    - name: "mysql config"
+      mysql_user:
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+        name: root
+        password: "{{ ansible_sudo_pass }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: "Remove annonymous acc"
+      mysql_user:
+        name: ''
+        state: absent
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+
+    - name: "Remove database test"
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+
+    - name: "Remove database login"
+      mysql_db:
+        name: login
+        state: absent
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+
+    - name: "Remove database crud"
+      mysql_db:
+        name: crud
+        state: absent
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+
+    - name: "Import database login"
+      mysql_db:
+        name: login
+        state: import
+        target: /var/www/{{ domainweb }}/login.sql
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+
+    - name: "Import database crud"
+      mysql_db:
+        name: crud
+        satate: import
+        target: /var/www/{{ domainweb }}/dashboard/crud.sql
+        login_user: root
+        login_password: "{{ ansible_sudo_pass }}"
+
+    - name: "firewall config"
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
