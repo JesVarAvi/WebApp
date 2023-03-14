@@ -1,0 +1,114 @@
+---
+- name: Desplegar aplicacion web
+  hosts: all
+  become: true
+  gather_facts: false
+  vars_files:
+    - llaves.yml
+  tasks:
+#instalaciones
+    - name: actualizar cache
+      apt:
+        update_cache: yes
+
+    - name: instalar php y apache
+      apt:
+        name: ['apache2' , 'php']
+        
+    - name: instalar pip
+      shell: "apt install python3-pip"
+
+    - name: installar pymysql
+      pip:
+        name: pymysql
+        state: present
+#app
+    - name: crear directorio de la pagina
+      file:
+        path: /var/www/app.jvargas.ejemplo.com/
+        state: directory
+        owner: www-data
+        group: www-data
+
+    - name: mover archivos de la aplicacion de manera local
+      copy:
+        src: security/
+        dest: /var/www/app.jvargas.ejemplo.com/
+        owner: www-data
+        group: www-data
+        remote_src: false
+
+    - name: agregar archivo de configuracion de manera local
+      copy:
+        src: jvargas.ejemplo.com.conf
+        dest: /etc/apache2/sites-available/
+        remote_src: false
+        
+    - name: Copiar archivo users.sql
+      copy:
+        src: users.sql
+        dest: /home/docs/
+        remote_src: false
+
+    - name: habilitar el sitio web
+      shell: 'a2ensite jvargas.ejemplo.com.conf'
+      
+    - name: Deshabilitar sitio por default
+      shell: 
+        cmd: 'a2dissite 000-default.conf'
+        chdir: /etc/apache2/sites-available/
+
+    - name: reiniciar apache
+      shell: 'systemctl restart apache2'
+      
+    - name: Configurar Firewall
+      ufw:
+        rule: allow
+        port: '80'
+        proto: tcp
+#base de datos        
+    - name: Habilitar e iniciar servicio
+      service: name=mysql enabled=yes state=started
+
+    - name: Cambiar contraseña de root
+      mysql_user:
+        name: root
+        password: "{{ dbpass }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Remover todas las cuentas anonimas
+      mysql_user:
+        name: ''
+        host_all: yes
+        state: absent
+        login_user: root
+        login_password: "{{ dbpass }}"
+        login_unix_socket: "/run/mysqld/mysqld.sock"
+
+    - name: Remover la base de datos test por default
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ dbpass }}"
+        login_unix_socket: "/run/mysqld/mysqld.sock"
+
+    - name: Crear la base de datos
+      mysql_db:
+        name: "{{ dbname }}"
+        state: present
+        login_user: root
+        login_password: "{{ dbpass }}"
+        login_unix_socket: "/run/mysqld/mysqld.sock"
+
+    - name: Crear tabla usuarios
+      mysql_db:
+        name: "{{ dbname }}"
+        state: import
+        target: /home/docs/users.sql
+        login_user: root
+        login_password: "{{ dbpass }}"
+        login_unix_socket: "/run/mysqld/mysqld.sock"
+
+    - name: Reiniciar mysql
+      shell: "systemctl restart mysql"
